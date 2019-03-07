@@ -1,0 +1,201 @@
+\documentclass[11pt]{article}
+\usepackage[top=1in,bottom=1in,left=1in,right=1in]{geometry}
+\usepackage{amsmath}
+
+\newcommand{\bbeta}{\mbox{\boldmath$\beta$}}
+\newcommand{\brho}{\mbox{\boldmath$\rho$}}
+
+
+\makeatletter
+   \renewcommand{\section}{\@startsection{section}{1}{0mm}
+   {\baselineskip}%
+   {\baselineskip}{\normalfont\normalsize\scshape}}%
+\makeatother
+
+\begin{document}
+
+\begin{center}
+{\large 
+Technical Appendix for \texttt{coxph.risk}
+
+Stephanie A. Kovalchik
+
+\today
+}
+\end{center}
+
+\section{Definition}
+
+Letting $m$ ($1,\dots,M$) index the number of failure types, the absolute risk of experiencing the $m$th event within the time interval $[t_0, t_1)$ in the presence of $M-1$ competing events is
+
+\begin{equation}
+\pi_m(t_0,t_1;\vec{x}) = \left[ \prod_{i=1}^M S_{i}(t_0;\vec{x}_i)  \right]^{-1} \int_{t_0}^{t_1} \lambda_{m}(u;\vec{x}_m) \prod_{i=1}^M S_{i}(u;\vec{x}_i) du.
+\label{eq:abs_risk}
+\end{equation}
+
+\noindent where $\vec{x} = (\vec{x}_1,\dots,\vec{x}_M)$ is a set of  cause-specific covariate vectors, $S_m(u;x_m) = \exp (- \int_0^u \lambda_m(v;\vec{x}_m) dv )$ and $\lambda_{m}(u;\vec{x}_m)$ are the cause-specific survival and hazard functions given covariates $\vec{x}_m$. 
+We assume that covariates in (\ref{eq:abs_risk}) remain fixed at their values at the beginning of the projection interval, $t_0$. For simplicity, the subscript in $\pi_m$, which emphasizes that the absolute risk pertains to a particular cause, will be omitted from here on. 
+
+The formulation of absolute risk given in Equation~(\ref{eq:abs_risk}) can accomodate many possible hazard models. In the \texttt{coxph.risk} implementation, the hazard model for each cause follows Cox's proportional hazards model,
+
+\begin{equation}
+\lambda_m (t;\vec{x}_m) = \lambda_{0m} (t) \exp ( \bbeta_m'\vec{x}_m )
+\label{eq:hazard}
+\end{equation}
+
+\noindent where $\lambda_{0m}(t)$ denotes the baseline hazard function at time $t$. 
+
+\section{Estimation}
+
+Consider a cohort of $i = 1,\dots, n$ individuals. Let $\delta^m_i (t)$ be an indicator function for the $i$th individual and $m$th event at time $t$, and let $y^m_i (t)$ indicate the at-risk status at time $t$ $m$th event at time $t$, taking the value one when the $i$th individual experiences an event or is censored at $t$ or later. The estimating equations for $\bbeta_m'$ $(1,\dots,M)$ are
+
+\begin{equation}
+\vec{U}(\bbeta_m) = \sum_{i=1}^n \delta^m_i (t_i) \lbrace\vec{x}^m_i - \vec{\bar{H}}(\bbeta_m, t_i) \rbrace
+\label{eq:ee_beta}
+\end{equation}
+
+\noindent  where $\vec{\bar{H}}(\bbeta_m, t)$ is an `average' of the risk profiles $\vec{x}^m$  among the individuals still at-risk at time $t$, 
+
+\begin{equation}
+\vec{\bar{H}}(\bbeta_m,t) = \frac{\sum_{i=1}^n  y^m_i(t) \exp ( \bbeta_m' \vec{x}^m_i ) \vec{x}^m_i}{\sum_{i=1}^n  y^m_i(t) \exp ( \bbeta_m' \vec{x}^m_i ) }.
+\label{eq:Hbar}
+\end{equation}
+
+\noindent  Standard optimization algorithms can be used to obtain the solution $\hat{\bbeta}_m$ to the estimating equations in (\ref{eq:ee_beta}).
+
+When no distributional assumption is made for $\lambda_{0m}$, the estimator for the cause-specific risk of the primary event within the interval $[t_0, t_1)$, given $\vec{x}$, is
+
+\begin{equation}
+\hat{\pi}(t_0,t_1;\vec{x}) = \left[ \prod_{i=1}^M \hat{S}_{0i}(t_0)^{\exp (\hat{\bbeta}_i'\vec{x}^i )}  \right]^{-1}  \exp (\hat{\bbeta}_1'\vec{x}^1 )\sum_{t_0 \leq u < t_1} \hat{\lambda}_{01}(u) \prod_{i=1}^M \hat{S}_{0i}(u)^{\exp(\hat{\bbeta}_i'\vec{x}^i )},
+\label{eq:est_abs_risk}
+\end{equation}
+
+\noindent where $\hat{S}_{0i}(u)$ is the cause-specific baseline survival function and $\hat{\lambda}_{01}(u)$ the primary-event baseline hazard function at time $u$. A semiparametric weighted Nelson-Aalen estimator (Aalen 1978) for the cause-specific baseline hazard function is 
+
+\begin{equation}
+\hat{\lambda}_{0m}(t) = \frac{\sum_{i=1}^n y^m_i(t) \delta^m_i(t)}{\sum_{i=1}^n  y^m_i(t) \exp ( \hat{\bbeta}_m' \vec{x}^m_i )},
+\label{eq:hazard_est}
+\end{equation}
+
+\noindent which uses Breslow's method for handling ties (Breslow 1974). The cause-specific baseline survival at time $t$ is estimated as
+
+\begin{equation}
+\hat{S}_{0m}(t) = \exp (- \sum_{u^m \leq t} \hat{\lambda}_{0m} (u^m_{i}) ),
+\label{eq:surv_base}
+\end{equation}
+
+\noindent with $u^m_{i}$ denoting the observed event times for the $m$th event type.
+
+For both the piecewise and semiparametric approaches, given a baseline survival estimate, the survival to time $t$ for an individual with risk profile $\vec{x}^m$ is
+
+\begin{equation}
+\hat{S}_{m}(t;\vec{x}^m) = \hat{S}_{0m}(t)^{\exp ( \hat{\bbeta}_m' \vec{x}^m )}.
+\end{equation}
+
+\section{Variance}
+
+Denote the $N^m$ ordered observed event times occuring within $[t_0,t_1)$ for the $m$th cause as $u^m_1 < u^m_2 < \dots < u^m_{N^m}$. In terms of these event times, Equation (\ref{eq:abs_risk}) becomes
+
+
+\begin{equation}
+\hat{\pi}(t_0,t_1; \vec{x}) =  \exp (\hat{\bbeta}_1'\vec{x}^1 )\sum_{i=1}^{N^1} \hat{\lambda}_{01}(u^1_i) \prod_{j=1}^M \left( \hat{S}_{0j}(u^1_i)/\hat{S}_{0j}(u^1_1) \right)^{\exp ( \hat{\bbeta}_j'\vec{x}^j )} = \sum_{i=1}^{N^1} \hat{\pi}(u^1_i).
+\label{eq:abs_risk_deviate}
+\end{equation}
+
+\noindent with $\hat{\pi}(u^1_i) = \exp ( \hat{\bbeta}_1'\vec{x}^1 ) \hat{\lambda}_{01}(u^1_i) \prod_{j=1}^M \left( \hat{S}_{0j}(u^1_i)/\hat{S}_{0j}(u^1_1) \right)^{\exp (\hat{\bbeta}_j'\vec{x}^j )}$. 
+
+We determine the derivative and deviates for each component of~(\ref{eq:abs_risk_deviate}). For the $\hat{\bbeta}_j$, the derivate is 
+
+\[
+\frac{\partial \hat{\pi}(t_0,t_1;\vec{x}) }{\partial \hat{\bbeta}_j} = \vec{x}^j \left[ \hat{\pi}(t_0,t_1;\vec{x}) + \exp ( \hat{\bbeta}_j'\vec{x}^j ) \sum_{i=1}^{N_1} \log\left( \hat{S}_{0j}(u^1_i)/\hat{S}_{0j}(u^1_1) \right) \hat{\pi}(u^1_i) \right],
+\]
+
+\noindent when $j=1$ and
+
+\[
+\frac{\partial \hat{\pi}(t_0,t_1;\vec{x}) }{\partial \hat{\bbeta}_j} =  \vec{x}^j \exp ( \hat{\bbeta}_j'\vec{x}^j ) \sum_{i=1}^{N_1} \log\left( \hat{S}_{0j}(u^1_i)/\hat{S}_{0j}(u^1_1) \right) \hat{\pi}(u^1_i)
+\]
+
+\noindent for competing causes. The Taylor deviates for each $\hat{\bbeta}_m$ are 
+
+\begin{equation}
+\Delta_{i} \lbrace {\hat{\bbeta}_{m}} \rbrace= \mathcal{H}({\hat{\bbeta}_{m}} )^{-1} 
+\delta^{m}_{j} (t_{i}) \lbrace \vec{x}^{m}_{j} - \bar{\vec{H}}(\hat{\bbeta}_{m},t_{j}) \rbrace.
+\label{eq:cox_delta}
+\end{equation}
+
+\noindent Equation~(\ref{eq:cox_delta})  takes the variance-covariance for the $\hat{\bbeta}_{m}$ and the product of each event's score.
+
+The derivatives for the baseline hazard components are
+
+\begin{equation}
+\frac{\partial \hat{\pi}(t_0,t_1; \vec{x})}{\partial \hat{\lambda}_{01}(u^1_i)} = \hat{\lambda}_{01}(u^1_i)^{-1} \hat{\pi}(u^1_i).
+\label{eq:dot_haz_semi}
+\end{equation}
+
+\noindent The Taylor deviates for the baseline hazard of cause $m$ at observed event time $t$ are
+
+\begin{equation}
+\Delta_{i} \lbrace \hat{\lambda}_{0m} (t) \rbrace = \frac{\partial \hat{\lambda}_{0m} (t)}{\partial N_m(t)} \Delta_{i} \lbrace N_m(t) \rbrace + \frac{\partial \hat{\lambda}_{0m} (t)}{\partial G_m(t)} \Delta_{i} \lbrace G_m(t) \rbrace,
+\end{equation}
+
+\noindent where
+
+\[
+N_m(t) = \sum_{i=1}^n  y^m_{i}(t) \delta^m_i(t)
+\]
+
+\noindent and
+
+\[
+G_m(t) = \sum_{i=1}^n  y^m_{i}(t)  \exp ( \hat{\bbeta}_m' \vec{x}^m_{i} ). 
+\]
+
+\noindent In terms of these quantities, the Taylor deviates are
+
+\begin{equation}
+\Delta_{i} \lbrace \hat{\lambda}_{0m} (t) \rbrace = G_m(t)^{-1} ( y^m_{i}(t) \delta^m_i(t) - \hat{\lambda}_{0m}(t) \Delta_{i} \lbrace G_m(t) \rbrace) 
+\end{equation}
+
+\noindent with
+
+\[
+\begin{array}{ll}
+\Delta_{i} \lbrace G_m(t) \rbrace =&  y^m_{i}(t) \exp ( \hat{\bbeta}_m' \vec{x}^m_{i} ) \\ 
+&+ \left[ \sum_{{j}=1}^{n} \vec{x}_j y^m_j(t) \exp ( \hat{\bbeta}_m' \vec{x}^m_{j} ) \right] \Delta_{i} \lbrace \hat{\bbeta}_{m} \rbrace.
+\end{array}
+\]
+
+The final components are the survival functions. The derivatives for each $\hat{S}_{0m}(u^1_j)$ are
+
+\begin{equation}
+\frac{\partial \hat{\pi}(t_0,t_1;\vec{x})}{\partial \hat{S}_{0m}(u^1_j)} = sgn(m) \exp ( \hat{\bbeta}_m'\vec{x}^m ) \hat{S}_{0m}(u^1_j)^{-1}  \hat{\pi}(u^1_j)
+\label{eq:surv_deriv}
+\end{equation}
+
+\noindent where $sgn(1) = -1$ and is one otherwise. Given the semiparametric estimate,
+
+
+\begin{equation}
+\hat{S}_{0m}(t) = \exp (- \sum_{u^m_{i} \leq t} \hat{\lambda}_{0m} (u^m_{i}) ),
+\label{eq:surv_base}
+\end{equation}
+
+\noindent the Taylor deviates for the baseline survival up to time $u^1_j$ for the $m$th risk type are
+
+\begin{equation}
+\Delta_{i} \lbrace \hat{S}_{0m} (u^1_{j}) \rbrace  = - \hat{S}_{0m} (u^1_{j}) \sum_{u^{m}_{n}\leq u^1_j}  \Delta_{i} \lbrace \hat{\lambda}_{0m}(u^{m}_{n}) \rbrace.
+\label{eq:surv_delta2}
+\end{equation}
+
+Combining these results, the expression for the Taylor deviates of $\hat{\pi}(t_0,t_1;\vec{x})$ are
+
+\[
+\begin{array}{ll}
+\Delta_{i} \lbrace \hat{\pi}(t_0,t_1; \vec{x}) \rbrace =&  \sum_{m=1}^M \frac{\hat{\pi}(t_0,t_1; \vec{x})}{\partial \hat{\bbeta}_m} \Delta_{i} \lbrace \hat{\bbeta}_m \rbrace +  \sum_{{j}=1}^{N_1} \frac{\hat{\pi}(t_0,t_1; \vec{x})}{\partial \hat{\lambda}_{01} (u^1_{j}) }  \Delta_{i} \lbrace \hat{\lambda}_{01} (u^1_l) \rbrace \\
+&+ \sum_{{j}=1}^{N_1} \sum_{m=1}^M  \frac{\hat{\pi}(t_0,t_1; \vec{x})}{\partial \hat{S}_{0m} (u^1_{j})} \Delta_{i} \lbrace \hat{S}_{0m} (u^1_{j}) \rbrace.
+\end{array}
+\]
+
+​
+\end{document}
