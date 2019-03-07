@@ -1,27 +1,51 @@
-#  File share/R/nspackloader.R
-#  Part of the R package, http://www.R-project.org
-#
-#  Copyright (C) 1995-2012 The R Core Team
-#
-#  This program is free software; you can redistribute it and/or modify
-#  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
-#  (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  A copy of the GNU General Public License is available at
-#  http://www.r-project.org/Licenses/
-
-local({
-    info <- loadingNamespaceInfo()
-    pkg <- info$pkgname
-    ns <- .getNamespace(as.name(pkg))
-    if (is.null(ns))
-        stop("cannot find namespace environment for ", pkg, domain = NA);
-    dbbase <- file.path(info$libname, pkg, "R", pkg)
-    lazyLoad(dbbase, ns, filter = function(n) n != ".__NAMESPACE__.")
-})
+coxph.risk <- function (begin, end, newdata, coxph1, ...) 
+{
+    risk <- function(begin, end, models, RR) {
+        H <- coxph.risk.baseline(begin, end, models)
+        if (!is.list(H)) 
+            0
+        else {
+            absrisk <- H[[1]]$surv^RR[1] * H[[1]]$haz * RR[1]
+            for (i in 2:length(H)) {
+                absrisk <- absrisk * (H[[i]]$surv^RR[i])
+            }
+            sum(absrisk)
+        }
+    }
+    risk.fixed.interval <- function(H, RR) {
+        if (!is.list(H)) 
+            0
+        else {
+            absrisk <- H[[1]]$surv^RR[1] * H[[1]]$haz * RR[1]
+            for (i in 2:length(H)) {
+                absrisk <- absrisk * (H[[i]]$surv^RR[i])
+            }
+            sum(absrisk)
+        }
+    }
+    models <- c.coxph.risk(coxph1, ...)
+    AllVars <- unique(unlist(sapply(models, function(x) all.vars(x$formula))))
+    newdata <- subset(newdata, select = unique(AllVars))
+    which.kept <- complete.cases(newdata)
+    if (!all(which.kept)) {
+        warning("Missing cases excluded.")
+        if (length(begin) > 1) {
+            begin <- begin[which.kept]
+            end <- end[which.kept]
+        }
+        newdata <- newdata[which.kept, ]
+    }
+    rr <- sapply(models, projection.relrisk, data = newdata)
+    if (is.matrix(rr)) 
+        rr.list <- lapply(1:nrow(rr), function(x) rr[x, ])
+    else rr.list <- list(rr)
+    if (length(begin) == 1) {
+        H <- coxph.risk.baseline(begin, end, models)
+        risks <- mapply(risk.fixed.interval, RR = rr.list, MoreArgs = list(H = H))
+    }
+    else {
+        risks <- mapply(risk, begin = begin, end = end, RR = rr.list, 
+            MoreArgs = list(models = models))
+    }
+    risks
+}
